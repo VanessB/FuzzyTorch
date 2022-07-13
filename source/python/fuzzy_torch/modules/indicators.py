@@ -27,7 +27,7 @@ class Linear(torch.nn.Module):
         with torch.no_grad():
             if not (weight is None):
                 weight = torch.tensor(weight, dtype=torch.float32)
-                weight = weight.reshape((in_features, out_features))
+                weight = weight.reshape((out_features, in_features))
 
                 self.linear.weight = torch.nn.Parameter(weight)
 
@@ -73,7 +73,7 @@ class Sigmoid(DotProductBased):
     def __init__(self, in_features, weight=None, offset=None):
         super().__init__(
                 in_features,
-                lambda x : torch.sigmoid(4 * x),
+                torch.sigmoid,#lambda x : torch.sigmoid(4 * x),
                 weight,
                 offset)
 

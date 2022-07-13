@@ -13,7 +13,7 @@ class FuzzyLogic:
 
 
     @classmethod
-    def fuzzy_and(cls, input, other, *, out=None):
+    def _fuzzy_and(cls, input, other, *, out=None):
         raise NotImplementedError
 
 
@@ -23,8 +23,8 @@ class FuzzyLogic:
 
 
     @classmethod
-    def fuzzy_or(cls, input, other, *, out=None):
-        out = cls.fuzzy_not(cls.fuzzy_and(cls.fuzzy_not(input), cls.fuzzy_not(other)))
+    def _fuzzy_or(cls, input, other, *, out=None):
+        out = cls.fuzzy_not(cls._fuzzy_and(cls.fuzzy_not(input), cls.fuzzy_not(other)))
         return out
 
 
@@ -34,18 +34,18 @@ class FuzzyLogic:
 
 
     @classmethod
-    def fuzzy_many_and(cls, *args, out=None):
+    def fuzzy_and(cls, *args, out=None):
         out = args[0]
         for i in range(1, len(args)):
-            out = cls.fuzzy_and(out, args[i])
+            out = cls._fuzzy_and(out, args[i])
         return out
 
 
     @classmethod
-    def fuzzy_many_or(cls, *args, out=None):
+    def fuzzy_or(cls, *args, out=None):
         out = args[0]
         for i in range(1, len(args)):
-            out = cls.fuzzy_or(out, args[i])
+            out = cls._fuzzy_or(out, args[i])
         return out
 
 
@@ -56,12 +56,12 @@ class Godel(FuzzyLogic):
     """
 
     @classmethod
-    def fuzzy_and(cls, input, other, *, out=None):
+    def _fuzzy_and(cls, input, other, *, out=None):
         return torch.minimum(input, other, out=out)
 
 
     @classmethod
-    def fuzzy_or(cls, input, other, *, out=None):
+    def _fuzzy_or(cls, input, other, *, out=None):
         return torch.maximum(input, other, out=out)
 
 
@@ -78,12 +78,12 @@ class Product(FuzzyLogic):
     """
 
     @classmethod
-    def fuzzy_and(cls, input, other, *, out=None):
+    def _fuzzy_and(cls, input, other, *, out=None):
         return torch.multiply(input, other, out=out)
 
 
     @classmethod
-    def fuzzy_or(cls, input, other, *, out=None):
+    def _fuzzy_or(cls, input, other, *, out=None):
         out = input + other - input * other
         return out
 
@@ -101,12 +101,12 @@ class Lukasiewicz(FuzzyLogic):
     """
 
     @classmethod
-    def fuzzy_and(cls, input, other, *, out=None):
+    def _fuzzy_and(cls, input, other, *, out=None):
         out = torch.maximum(torch.zeros_like(input), input + other - 1)
         return out
 
     @classmethod
-    def fuzzy_or(cls, input, other, *, out=None):
+    def _fuzzy_or(cls, input, other, *, out=None):
         out = torch.minimum(input + other, torch.ones_like(input))
         return out
 
@@ -125,12 +125,12 @@ class Nilpotent(FuzzyLogic):
     """
 
     @classmethod
-    def fuzzy_and(cls, input, other, *, out=None):
+    def _fuzzy_and(cls, input, other, *, out=None):
         out = torch.greater(input + other, 1) * torch.minimum(input, other)
         return out
 
     @classmethod
-    def fuzzy_or(cls, input, other, *, out=None):
+    def _fuzzy_or(cls, input, other, *, out=None):
         sum_io = input + other
         out = torch.less(sum_io, torch.ones_like(sum_io)) * torch.maximum(input, other) + torch.ge(sum_io, 1)
         return out
@@ -148,17 +148,18 @@ class Hamacher(FuzzyLogic):
     """
 
     @classmethod
-    def fuzzy_and(cls, input, other, *, out=None, epsilon=_EPSILON):
+    def _fuzzy_and(cls, input, other, *, out=None, epsilon=_EPSILON):
         prod_io = input * other
         out = prod_io / (input + other - prod_io + epsilon)
         return out
 
     @classmethod
-    def fuzzy_or(cls, input, other, *, out=None, epsilon=_EPSILON):
+    def _fuzzy_or(cls, input, other, *, out=None, epsilon=_EPSILON):
         prod_io = input * other
         out = torch.clamp((input + other - 2 * prod_io + epsilon) / (1 - prod_io + epsilon), 0, 1)
-        # Почему-то иногда значение получается не из [0;1].
+        # Почему-то иногда значение получается не из [0; 1].
         # К регуляризации это не имеет никакого отношения.
+        # Требуется использовать clamp.
         return out
 
     @classmethod

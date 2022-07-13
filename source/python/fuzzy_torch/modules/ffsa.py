@@ -1,15 +1,20 @@
 import torch
 
 
-class FuzzyTransition:
+class FuzzyTransition(torch.nn.Module):
     """
     Структура для описания нечеткого перехода.
     """
 
     def __init__(self, from_idx, to_idx, condition):
+        super().__init__()
         self.from_idx = from_idx
         self.to_idx = to_idx
         self.condition = condition
+
+    def forward(self, *args):
+        return self.condition(*args)
+
 
 
 class FuzzyFSA(torch.nn.Module):
@@ -17,9 +22,10 @@ class FuzzyFSA(torch.nn.Module):
     Базовый класс нечеткого конечного автомата.
     """
 
-    def __init__(self, logic):
+    def __init__(self, logic, normalize=False):
         super().__init__()
         self.logic = logic
+        self.normalize = normalize
         self.states = []
         self.transitions = []
 
@@ -28,30 +34,39 @@ class FuzzyFSA(torch.nn.Module):
         raise NotImplementedError
 
 
+    def normalize_activation(self, activation):
+        """
+        Нормализация активаций состояний (опцинально).
+        """
+
+        return activation / torch.sum(activation, dim=1, keepdim=True)
+
+
 
 class TimeIndependentFFSA(FuzzyFSA):
     """
     Не зависящий от времени нечеткий конечный автомат.
     """
 
-    def __init__(self, logic):
-        super().__init__(logic=logic)
+    def __init__(self, logic, normalize=False):
+        super().__init__(logic=logic, normalize=normalize)
 
 
-    def forward(self, input, activations):
-        assert (activations.dim() == 2) and (activations.size()[1] == len(self.states))
+    def forward(self, input, activation):
+        assert (activation.dim() == 2) and (activation.size()[1] == len(self.states))
 
-        from_activations = torch.zeros_like(activations)
-        to_activations   = torch.zeros_like(activations)
+        from_activation = torch.zeros_like(activation)
+        to_activation   = torch.zeros_like(activation)
 
         for transition in self.transitions:
             # Не работает, так как используется in-place срезы (нарушает дерево производных).
             #condition = transition.condition(input).squeeze()
-            #from_activations[:, transition.from_idx] = self.logic.fuzzy_or(from_activations[:, transition.from_idx], condition)
-            #to_activations[:, transition.to_idx] = self.logic.fuzzy_or(to_activations[:, transition.to_idx], condition)
+            #from_activations[:, transition.from_idx] = self.logic.fuzzy_or(from_activation[:, transition.from_idx], condition)
+            #to_activations[:, transition.to_idx] = self.logic.fuzzy_or(to_activation[:, transition.to_idx], condition)
 
             # Условие перехода, размноженное на все состояния.
-            condition = transition.condition(input).repeat(1, len(self.states))
+            # Конъюнкция активности состояния, из которого происходит переход, и условия самого перехода.
+            condition = self.logic.fuzzy_and(activation[:, transition.from_idx, None], transition(input)).repeat(1, len(self.states))
 
             # Вспомогательные тензоры-множители.
             helper_from = torch.zeros_like(condition)
@@ -60,12 +75,15 @@ class TimeIndependentFFSA(FuzzyFSA):
             helper_to = torch.zeros_like(condition)
             helper_to[:, transition.to_idx] = 1
 
-            from_activations = self.logic.fuzzy_or(from_activations, helper_from * condition)
-            to_activations = self.logic.fuzzy_or(to_activations, helper_to * condition)
+            from_activation = self.logic.fuzzy_or(from_activation, helper_from * condition)
+            to_activation = self.logic.fuzzy_or(to_activation, helper_to * condition)
 
-        new_activations = self.logic.fuzzy_and(
-            self.logic.fuzzy_or(activations, to_activations),
-            self.logic.fuzzy_not(from_activations)
+        new_activation = self.logic.fuzzy_and(
+            self.logic.fuzzy_or(activation, to_activation),
+            self.logic.fuzzy_not(from_activation)
         )
 
-        return new_activations
+        if self.normalize:
+            new_activation = self.normalize_activation(new_activation)
+
+        return new_activation
