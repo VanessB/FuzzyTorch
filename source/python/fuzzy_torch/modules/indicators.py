@@ -13,6 +13,12 @@ def abs_sigmoid(input, out=None):
     return out
 
 
+# Треугольное распределение.
+def triangle_pdf(input, out=None):
+    out = torch.clamp(1 - torch.abs(input), min=0)
+    return out
+
+
 class Linear(torch.nn.Module):
     """
     Линейное преобразование и некоторая функция.
@@ -91,7 +97,6 @@ class AbsSigmoid(DotProductBased):
                 offset)
 
 
-
 class QuadricBased(Linear):
     """
     Линейное преобразование, норма и некоторая функция.
@@ -117,3 +122,31 @@ class Gaussian(QuadricBased):
 
     def __init__(self, in_features, weight=None, offset=None):
         super().__init__(in_features, gauss_pdf, weight, offset)
+
+
+class Triangle(QuadricBased):
+    """
+    Линейное преобразование, норма и треугольное распределение.
+    """
+
+    def __init__(self, in_features, weight=None, offset=None):
+        super().__init__(
+                in_features,
+                triangle_pdf,
+                weight,
+                offset)
+
+class Singletone(torch.nn.Module):
+    """
+    Синглтон
+    """
+    def __init__(self, offset=None):
+        super().__init__()
+        if offset is None:
+            self.offset = torch.nn.Parameter(torch.zeros(1))
+        else:
+            self.offset = torch.nn.Parameter(offset)
+
+
+    def forward(self, input):
+        return torch.eq(input, self.offset)
