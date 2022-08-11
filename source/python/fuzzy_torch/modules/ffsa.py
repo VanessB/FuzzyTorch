@@ -90,7 +90,7 @@ class TimeIndependentFFSA(FuzzyFSA):
 
 
 
-class FuzzyTransitionContinuous(FuzzyTransition):
+class ContinuousFuzzyTransition(FuzzyTransition):
     """
     Структура для описания плавного нечеткого перехода.
     """

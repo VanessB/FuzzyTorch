@@ -19,127 +19,12 @@ def triangle_pdf(input, out=None):
     return out
 
 
-class Linear(torch.nn.Module):
-    """
-    Линейное преобразование и некоторая функция.
-    """
-
-    def __init__(self, in_features, out_features, function, weight=None, offset=None):
-        super().__init__()
-        self.in_features = in_features
-        self.linear = torch.nn.Linear(in_features, out_features)
-        self.function = function
-
-        with torch.no_grad():
-            if not (weight is None):
-                weight = torch.tensor(weight, dtype=torch.float32)
-                weight = weight.reshape((out_features, in_features))
-
-                self.linear.weight = torch.nn.Parameter(weight)
-
-            if not (offset is None):
-                offset = torch.tensor(offset, dtype=torch.float32)
-                offset = offset.reshape((out_features))
-
-                self.linear.bias = torch.nn.Parameter(-self.linear.weight * offset)
-
-
-    def forward(self, x):
-        return self.function(self.linear(x))
-
-
-
-class DotProductBased(Linear):
-    """
-    Скалярное произведение и некоторая функция.
-    """
-
-    def __init__(self, in_features, function, weight=None, offset=None):
-        super().__init__(in_features, 1, function, weight, offset)
-
-
-class Heaviside(DotProductBased):
-    """
-    Скалярное произведение и ступенька.
-    """
-
-    def __init__(self, in_features, weight=None, offset=None):
-        super().__init__(
-                in_features,
-                lambda x : torch.heaviside(x, torch.tensor([0.5])),
-                weight,
-                offset)
-
-
-class Sigmoid(DotProductBased):
-    """
-    Скалярное произведение и логистическая сигмоида.
-    """
-
-    def __init__(self, in_features, weight=None, offset=None):
-        super().__init__(
-                in_features,
-                torch.sigmoid,#lambda x : torch.sigmoid(4 * x),
-                weight,
-                offset)
-
-
-class AbsSigmoid(DotProductBased):
-    """
-    Скалярное произведение и сигмоида с модулем.
-    """
-
-    def __init__(self, in_features, weight=None, offset=None):
-        super().__init__(
-                in_features,
-                abs_sigmoid,
-                weight,
-                offset)
-
-
-class QuadricBased(Linear):
-    """
-    Линейное преобразование, норма и некоторая функция.
-    """
-
-    def __init__(self, in_features, function, weight=None, offset=None):
-        super().__init__(
-                in_features,
-                in_features,
-                lambda x : function(torch.norm(x, dim=1, keepdim=True)),
-                weight,
-                offset)
-
-
-    def forward(self, x):
-        return self.function(torch.linalg.norm(self.linear(x), dim=1, keepdim=True))
-
-
-class Gaussian(QuadricBased):
-    """
-    Линейное преобразование, норма и гауссиана.
-    """
-
-    def __init__(self, in_features, weight=None, offset=None):
-        super().__init__(in_features, gauss_pdf, weight, offset)
-
-
-class Triangle(QuadricBased):
-    """
-    Линейное преобразование, норма и треугольное распределение.
-    """
-
-    def __init__(self, in_features, weight=None, offset=None):
-        super().__init__(
-                in_features,
-                triangle_pdf,
-                weight,
-                offset)
 
 class Singletone(torch.nn.Module):
     """
-    Синглтон
+    Индикаторная функция множества из одного элемента.
     """
+
     def __init__(self, offset=None):
         super().__init__()
         if offset is None:
@@ -150,3 +35,84 @@ class Singletone(torch.nn.Module):
 
     def forward(self, input):
         return torch.eq(input, self.offset)
+
+
+
+# Отдельный набор одномерных масштабируемых функций принадлежности.
+class ScalableIndicator(torch.nn.Module):
+    """
+    Базовый класс масштабируемых (вес + сдвиг) индикаторных функций.
+    """
+
+    def __init__(self, weight=None, offset=None):
+        super().__init__()
+
+        with torch.no_grad():
+            if weight is None:
+                self.weight = torch.nn.Parameter(torch.empty(1))
+                torch.nn.init.uniform_(self.weight, -1, 1)
+            else:
+                self.weight = torch.nn.Parameter(torch.tensor(1) * weight)
+
+            if offset is None:
+                self.offset = torch.nn.Parameter(torch.empty(1))
+                torch.nn.init.uniform_(self.offset, -1, 1)
+            else:
+                self.offset = torch.nn.Parameter(torch.tensor(1) * offset)
+
+
+    def forward(self, input):
+        raise NotImplementedError
+
+
+class Sigmoid(ScalableIndicator):
+    """
+    Логистическая сигмоида.
+    """
+
+    def __init__(self, weight=None, offset=None):
+        super().__init__(weight, offset)
+
+
+    def forward(self, input):
+        return torch.sigmoid(self.weight * (input - self.offset))
+
+
+class LogSigmoid(ScalableIndicator):
+    """
+    Логистическая сигмоида в логарифмическом масштабе.
+    """
+
+    def __init__(self, weight=None, offset=None):
+        super().__init__(weight, offset)
+
+
+    def forward(self, input):
+        return 1 / (torch.pow(input, -self.weight) * torch.exp(self.weight * self.offset) + 1)
+
+
+class BiSigmoid(ScalableIndicator):
+    """
+    Логистическая сигмоида в логсигмоидном масштабе.
+    """
+
+    def __init__(self, weight=None, offset=None):
+        super().__init__(weight, offset)
+
+
+    def forward(self, input):
+        return 1 / (torch.pow(1 / input - 1, self.weight) * torch.exp(self.weight * self.offset) + 1)
+
+
+class Gaussian(ScalableIndicator):
+    """
+    Гауссиана.
+    """
+
+    def __init__(self, weight=None, offset=None):
+        super().__init__(weight, offset)
+
+
+    def forward(self, input):
+        return gauss_pdf(self.weight * (input - self.offset))
+
